@@ -20,8 +20,8 @@ object BackendService {
       case GET -> Root / "forecasts" =>
         Ok(Forecast getAll stmt map (_.asJson))
 
-      case GET -> Root / "forecast_ids" =>
-        Ok(Forecast getIds stmt map (_.asJson))
+      case GET -> Root / "forecast_data" =>
+        Ok(Forecast getData stmt map (_.asJson))
 
       case POST -> Root / "add" / LongVar(id) =>
         Created(Forecast.add(stmt)(id) map (_.asJson))

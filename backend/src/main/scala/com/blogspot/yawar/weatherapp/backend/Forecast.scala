@@ -21,7 +21,7 @@ object Forecast {
 )"""
 
     final val Get: String = "select id, rank from cities"
-    final val GetIds: String = "select id from cities"
+    final val GetData: String = "select id, rank from cities"
     final val GetLastRank: String = "select max(rank) from cities"
 
     def insert(id: Id, rank: Int): String =
@@ -53,8 +53,17 @@ object Forecast {
     implicit val encoder: Encoder[Day] = deriveEncoder
   }
 
-  case class Dto(list: Seq[Day]) extends AnyVal
-  object Dto { implicit val decoder: Decoder[Dto] = deriveDecoder }
+  private case class Dto(list: Seq[Day]) extends AnyVal
+  private object Dto {
+    implicit val decoder: Decoder[Dto] = deriveDecoder
+  }
+
+  case class Data(id: Id, rank: Int)
+  object Data {
+    implicit val encoder: Encoder[Data] = deriveEncoder
+    val fromResultSet: ResultSet => Data = rs =>
+      Data(rs getLong 1, rs getInt 2)
+  }
 
   implicit val encoder: Encoder[Forecast] = deriveEncoder
 
@@ -86,8 +95,10 @@ object Forecast {
 
   private val httpClient: Client = PooledHttp1Client()
 
-  def getIds(stmt: Statement): Task[Seq[Id]] =
-    Task(resultSetToSeq(stmt executeQuery Queries.GetIds)(getLongCol1))
+  def getData(stmt: Statement): Task[Seq[Data]] =
+    Task(
+      resultSetToSeq(
+        stmt executeQuery Queries.GetData)(Data.fromResultSet))
 
   def getAll(stmt: Statement): Task[Seq[Forecast]] =
     Task {
