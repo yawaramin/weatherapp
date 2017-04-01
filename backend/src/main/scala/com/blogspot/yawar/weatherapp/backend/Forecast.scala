@@ -9,38 +9,37 @@ import org.http4s.client.Client
 import scalaz.concurrent.Task
 
 case class Forecast(
-  id: Forecast.Id, rank: Int, cityId: Long, days: Seq[Forecast.Day])
+  id: Forecast.Id, rank: Forecast.Rank, days: Seq[Forecast.Day])
 
 object Forecast {
   type Id = Long
 
   object Queries {
-    final val Drop: String = "drop table if exists forecast_ids"
-    final val Create: String = """create table forecast_ids (
-  id int identity primary key, city_id int, rank int
+    final val Drop: String = "drop table if exists cities"
+    final val Create: String = """create table cities (
+  id int identity primary key, rank int
 )"""
 
-    final val GetCities: String =
-      "select id, city_id, rank from forecast_ids"
+    final val Get: String = "select id, rank from cities"
+    final val GetIds: String = "select id from cities"
+    final val GetLastRank: String = "select max(rank) from cities"
 
-    final val GetForecastIds: String = "select id from forecast_ids"
-    final val GetLastRank: String = "select max(rank) from forecast_ids"
+    def insert(id: Id, rank: Int): String =
+      s"insert into cities (id, rank) values ($id, $rank)"
 
-    def insertCityId(id: Long, rank: Int): String =
-      s"insert into forecast_ids (rank, city_id) values ($rank, $id)"
-
-    def remove(id: Id): String =
-      s"delete from forecast_ids where id = $id"
-
-    def getRankFor(id: Id): String =
-      s"select rank from forecast_ids where id = $id"
+    def remove(id: Id): String = s"delete from cities where id = $id"
+    def getIdFor(rank: Int): String =
+      s"select id from cities where rank = $rank"
 
     def getHigherRankThan(rank: Int): String =
-      s"select max(rank) from forecast_ids where rank < $rank"
+      s"select max(rank) from cities where rank < $rank"
 
     def getLowerRankThan(rank: Int): String =
-      s"select min(rank) from forecast_ids where rank > $rank"
+      s"select min(rank) from cities where rank > $rank"
   }
+
+  case class Rank(rank: Int) extends AnyVal
+  object Rank { implicit val encoder: Encoder[Rank] = deriveEncoder }
 
   case class Day(dt: Long, temp: Day.Temp, clouds: Int)
   object Day {
@@ -59,7 +58,7 @@ object Forecast {
 
   implicit val encoder: Encoder[Forecast] = deriveEncoder
 
-  private def cityUrl(id: Id): String =
+  private def urlFor(id: Id): String =
     "http://api.openweathermap.org/data/2.5/forecast/daily?id=%d&cnt=7&APPID=0e48a956800e3f3a3d05996495285f5b"
       .format(id)
 
@@ -85,68 +84,60 @@ object Forecast {
   private val httpClient: Client = PooledHttp1Client()
 
   def getIds(stmt: Statement): Task[Seq[Id]] =
-    Task {
-      resultSetToSeq(stmt executeQuery Queries.GetForecastIds) { rs =>
-        rs getLong 1
-      }
-    }
+    Task(resultSetToSeq(stmt executeQuery Queries.GetIds)(_ getLong 1))
 
   def getAll(stmt: Statement): Task[Seq[Forecast]] =
     Task {
-      resultSetToSeq(stmt executeQuery Queries.GetCities) { rs =>
-        // Forecast ID, city ID, rank
-        (rs getLong 1, rs getLong 2, rs getInt 3)
+      resultSetToSeq(stmt executeQuery Queries.Get) { rs =>
+        (rs getLong 1, rs getInt 2) // ID, rank
       }
-    } flatMap { citiesByForecast =>
+    } flatMap { cities =>
       Task.gatherUnordered(
-        citiesByForecast map { case (forecastId, cityId, rank) =>
-          httpClient.expect(cityUrl(cityId))(jsonOf[Dto]) map { dto =>
-            Forecast(forecastId, rank, cityId, dto.list)
+        cities map { case (id, rank) =>
+          httpClient.expect(urlFor(id))(jsonOf[Dto]) map { dto =>
+            Forecast(id, Rank(rank), dto.list)
           }
         })
     }
 
-  def add(stmt: Statement)(id: Long): Task[Id] =
+  def add(stmt: Statement)(id: Id): Task[Rank] =
     Task {
       val conn = stmt.getConnection
       // Need to get last rank and insert next rank in same transaction
       conn setAutoCommit false
 
-      val lastRank =
+      val nextRank =
         resultSetToOne(
-          stmt executeQuery Queries.GetLastRank)(getIntCol1)
+          stmt executeQuery Queries.GetLastRank)(getIntCol1) + 1
 
-      stmt.execute(
-        Queries.insertCityId(id, lastRank + 1),
-        Statement.RETURN_GENERATED_KEYS)
-
-      val result = resultSetToOne(stmt.getGeneratedKeys)(_ getLong 1)
+      stmt execute Queries.insert(id, nextRank)
       conn setAutoCommit true
-      result
+
+      Rank(nextRank)
     }
 
   def remove(stmt: Statement)(id: Id): Task[Unit] =
     Task(stmt execute (Queries remove id))
 
-  def moveUp(stmt: Statement)(id: Id): Task[Unit] =
+  def moveUp(stmt: Statement)(rank: Int): Task[Unit] =
     Task {
       val conn = stmt.getConnection
       conn setAutoCommit false
 
-      val rank =
+      val id =
         resultSetToOne(
-          stmt executeQuery (Queries getRankFor id))(getIntCol1)
+          stmt executeQuery (Queries getIdFor rank))(getIntCol1)
 
       val higherRank =
         resultSetToOne(
           stmt executeQuery (Queries getHigherRankThan rank))(
           getIntCol1)
 
-      stmt execute s"""update forecast_ids
+      stmt execute s"""update cities
 set rank = $rank
 where rank = $higherRank"""
 
-      stmt execute s"""update forecast_ids
+      stmt execute s"""update cities
 set rank = $higherRank
 where id = $id"""
 
