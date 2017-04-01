@@ -13,6 +13,7 @@ case class Forecast(
 
 object Forecast {
   type Id = Long
+  type Rank = Int
 
   object Queries {
     final val Drop: String = "drop table if exists cities"
@@ -38,9 +39,6 @@ object Forecast {
       s"select min(rank) from cities where rank > $rank"
   }
 
-  case class Rank(rank: Int) extends AnyVal
-  object Rank { implicit val encoder: Encoder[Rank] = deriveEncoder }
-
   case class Day(dt: Long, temp: Day.Temp, clouds: Int)
   object Day {
     case class Temp(min: Float, max: Float)
@@ -56,13 +54,6 @@ object Forecast {
   private case class Dto(list: Seq[Day]) extends AnyVal
   private object Dto {
     implicit val decoder: Decoder[Dto] = deriveDecoder
-  }
-
-  case class Data(id: Id, rank: Int)
-  object Data {
-    implicit val encoder: Encoder[Data] = deriveEncoder
-    val fromResultSet: ResultSet => Data = rs =>
-      Data(rs getLong 1, rs getInt 2)
   }
 
   implicit val encoder: Encoder[Forecast] = deriveEncoder
@@ -92,15 +83,16 @@ object Forecast {
 
   private val getIntCol1: ResultSet => Int = _ getInt 1
   private val getLongCol1: ResultSet => Long = _ getLong 1
+  private val fromResultSet: ResultSet => Forecast = rs =>
+    Forecast(rs getLong 1, rs getInt 2, Seq.empty)
 
   private val httpClient: Client = PooledHttp1Client()
 
-  def getData(stmt: Statement): Task[Seq[Data]] =
+  def getData(stmt: Statement): Task[Seq[Forecast]] =
     Task(
-      resultSetToSeq(
-        stmt executeQuery Queries.GetData)(Data.fromResultSet))
+      resultSetToSeq(stmt executeQuery Queries.GetData)(fromResultSet))
 
-  def getAll(stmt: Statement): Task[Seq[Forecast]] =
+  def refresh(stmt: Statement): Task[Seq[Forecast]] =
     Task {
       resultSetToSeq(stmt executeQuery Queries.Get) { rs =>
         (rs getLong 1, rs getInt 2) // ID, rank
@@ -109,12 +101,12 @@ object Forecast {
       Task.gatherUnordered(
         cities map { case (id, rank) =>
           httpClient.expect(urlFor(id))(jsonOf[Dto]) map { dto =>
-            Forecast(id, Rank(rank), dto.list)
+            Forecast(id, rank, dto.list)
           }
         })
     }
 
-  def add(stmt: Statement)(id: Id): Task[Rank] =
+  def add(stmt: Statement)(id: Id): Task[Forecast] =
     Task {
       val conn = stmt.getConnection
       // Need to get last rank and insert next rank in same transaction
@@ -127,13 +119,13 @@ object Forecast {
       stmt execute Queries.insert(id, nextRank)
       conn setAutoCommit true
 
-      Rank(nextRank)
+      Forecast(id, nextRank, Seq.empty)
     }
 
   def remove(stmt: Statement)(id: Id): Task[Unit] =
     Task(stmt execute (Queries remove id))
 
-  def moveUp(stmt: Statement)(rank: Int): Task[Unit] =
+  def moveUp(stmt: Statement)(rank: Int): Task[Forecast] =
     Task {
       val conn = stmt.getConnection
       conn setAutoCommit false
@@ -155,10 +147,13 @@ where rank = $higherRank"""
 set rank = $higherRank
 where id = $id"""
 
+      val forecast = Forecast(id, higherRank, Seq.empty)
       conn setAutoCommit true
+
+      forecast
     }
 
-  def moveDown(stmt: Statement)(rank: Int): Task[Unit] =
+  def moveDown(stmt: Statement)(rank: Int): Task[Forecast] =
     Task {
       val conn = stmt.getConnection
       conn setAutoCommit false
@@ -179,6 +174,9 @@ where rank = $lowerRank"""
 set rank = $lowerRank
 where id = $id"""
 
+      val forecast = Forecast(id, lowerRank, Seq.empty)
       conn setAutoCommit true
+
+      forecast
     }
 }

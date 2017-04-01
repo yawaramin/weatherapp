@@ -18,7 +18,7 @@ object BackendService {
 
     HttpService {
       case GET -> Root / "forecasts" =>
-        Ok(Forecast getAll stmt map (_.asJson))
+        Ok(Forecast refresh stmt map (_.asJson))
 
       case GET -> Root / "forecast_data" =>
         Ok(Forecast getData stmt map (_.asJson))
@@ -30,13 +30,15 @@ object BackendService {
         Forecast.remove(stmt)(id) flatMap (_ => Ok())
 
       case POST -> Root / "move" / "up" / IntVar(id) =>
-        Forecast.moveUp(stmt)(id)
-          .flatMap(_ => Ok())
+        Forecast
+          .moveUp(stmt)(id)
+          .flatMap(forecast => Ok(forecast.asJson))
           .handleWith { case _: JdbcSQLException => NotFound() }
 
       case POST -> Root / "move" / "down" / IntVar(id) =>
-        Forecast.moveDown(stmt)(id)
-          .flatMap(_ => Ok())
+        Forecast
+          .moveDown(stmt)(id)
+          .flatMap(forecast => Ok(forecast.asJson))
           .handleWith { case _: JdbcSQLException => NotFound() }
     }
   }
