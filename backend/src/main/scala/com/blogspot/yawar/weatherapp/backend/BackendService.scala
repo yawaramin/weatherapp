@@ -19,11 +19,14 @@ object BackendService {
       case GET -> Root / "forecasts" =>
         Ok(Forecast getAll stmt map (_.asJson))
 
-      case POST -> Root / "forecast" / "city" / LongVar(id) =>
+      case GET -> Root / "forecast_ids" =>
+        Ok(Forecast getIds stmt map (_.asJson))
+
+      case POST -> Root / "add" / LongVar(id) =>
         Created(Forecast.add(stmt)(id) map (_.asJson))
 
-      case POST -> Root / "unforecast" / IntVar(id) =>
-        Forecast remove id; NoContent()
+      case POST -> Root / "remove" / IntVar(id) =>
+        Forecast.remove(stmt)(id) flatMap (_ => NoContent())
 
       case POST -> Root / "move" / "up" / IntVar(id) =>
         Forecast moveUp id; NoContent()
