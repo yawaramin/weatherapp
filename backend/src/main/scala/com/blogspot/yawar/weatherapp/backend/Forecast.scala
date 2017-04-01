@@ -79,12 +79,15 @@ object Forecast {
     rs.first; get(rs)
   }
 
-  /** Frequently-used getter. */
+  // Frequently-used getters.
+
   private val getIntCol1: ResultSet => Int = _ getInt 1
+  private val getLongCol1: ResultSet => Long = _ getLong 1
+
   private val httpClient: Client = PooledHttp1Client()
 
   def getIds(stmt: Statement): Task[Seq[Id]] =
-    Task(resultSetToSeq(stmt executeQuery Queries.GetIds)(_ getLong 1))
+    Task(resultSetToSeq(stmt executeQuery Queries.GetIds)(getLongCol1))
 
   def getAll(stmt: Statement): Task[Seq[Forecast]] =
     Task {
@@ -126,7 +129,7 @@ object Forecast {
 
       val id =
         resultSetToOne(
-          stmt executeQuery (Queries getIdFor rank))(getIntCol1)
+          stmt executeQuery (Queries getIdFor rank))(getLongCol1)
 
       val higherRank =
         resultSetToOne(
@@ -144,5 +147,27 @@ where id = $id"""
       conn setAutoCommit true
     }
 
-  def moveDown(id: Id): Unit = ???
+  def moveDown(stmt: Statement)(rank: Int): Task[Unit] =
+    Task {
+      val conn = stmt.getConnection
+      conn setAutoCommit false
+
+      val id =
+        resultSetToOne(
+          stmt executeQuery (Queries getIdFor rank))(getLongCol1)
+
+      val lowerRank =
+        resultSetToOne(
+          stmt executeQuery (Queries getLowerRankThan rank))(getIntCol1)
+
+      stmt execute s"""update cities
+set rank = $rank
+where rank = $lowerRank"""
+
+      stmt execute s"""update cities
+set rank = $lowerRank
+where id = $id"""
+
+      conn setAutoCommit true
+    }
 }

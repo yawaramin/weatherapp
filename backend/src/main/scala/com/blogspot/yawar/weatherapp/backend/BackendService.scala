@@ -35,7 +35,9 @@ object BackendService {
           .handleWith { case _: JdbcSQLException => NotFound() }
 
       case POST -> Root / "move" / "down" / IntVar(id) =>
-        Forecast moveDown id; NotImplemented()
+        Forecast.moveDown(stmt)(id)
+          .flatMap(_ => Ok())
+          .handleWith { case _: JdbcSQLException => NotFound() }
     }
   }
 }
