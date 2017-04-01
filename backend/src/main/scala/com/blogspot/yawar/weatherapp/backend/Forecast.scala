@@ -17,7 +17,7 @@ object Forecast {
   object Queries {
     final val Drop: String = "drop table if exists forecast_ids"
     final val Create: String = """create table forecast_ids (
-  id int identity primary key, city_id int, rank int unique
+  id int identity primary key, city_id int, rank int
 )"""
 
     final val GetCities: String =
@@ -31,6 +31,15 @@ object Forecast {
 
     def remove(id: Id): String =
       s"delete from forecast_ids where id = $id"
+
+    def getRankFor(id: Id): String =
+      s"select rank from forecast_ids where id = $id"
+
+    def getHigherRankThan(rank: Int): String =
+      s"select max(rank) from forecast_ids where rank < $rank"
+
+    def getLowerRankThan(rank: Int): String =
+      s"select min(rank) from forecast_ids where rank > $rank"
   }
 
   case class Day(dt: Long, temp: Day.Temp, clouds: Int)
@@ -66,6 +75,13 @@ object Forecast {
     as
   }
 
+  private def resultSetToOne[A](
+    rs: ResultSet)(get: ResultSet => A): A = {
+    rs.first; get(rs)
+  }
+
+  /** Frequently-used getter. */
+  private val getIntCol1: ResultSet => Int = _ getInt 1
   private val httpClient: Client = PooledHttp1Client()
 
   def getIds(stmt: Statement): Task[Seq[Id]] =
@@ -95,17 +111,16 @@ object Forecast {
       val conn = stmt.getConnection
       // Need to get last rank and insert next rank in same transaction
       conn setAutoCommit false
-      var rs = stmt executeQuery Queries.GetLastRank
-      rs.first
-      val lastRank = rs getInt 1
+
+      val lastRank =
+        resultSetToOne(
+          stmt executeQuery Queries.GetLastRank)(getIntCol1)
 
       stmt.execute(
         Queries.insertCityId(id, lastRank + 1),
         Statement.RETURN_GENERATED_KEYS)
 
-      rs = stmt.getGeneratedKeys
-      rs.first
-      val result = rs getLong 1
+      val result = resultSetToOne(stmt.getGeneratedKeys)(_ getLong 1)
       conn setAutoCommit true
       result
     }
@@ -113,6 +128,30 @@ object Forecast {
   def remove(stmt: Statement)(id: Id): Task[Unit] =
     Task(stmt execute (Queries remove id))
 
-  def moveUp(id: Id): Unit = ???
+  def moveUp(stmt: Statement)(id: Id): Task[Unit] =
+    Task {
+      val conn = stmt.getConnection
+      conn setAutoCommit false
+
+      val rank =
+        resultSetToOne(
+          stmt executeQuery (Queries getRankFor id))(getIntCol1)
+
+      val higherRank =
+        resultSetToOne(
+          stmt executeQuery (Queries getHigherRankThan rank))(
+          getIntCol1)
+
+      stmt execute s"""update forecast_ids
+set rank = $rank
+where rank = $higherRank"""
+
+      stmt execute s"""update forecast_ids
+set rank = $higherRank
+where id = $id"""
+
+      conn setAutoCommit true
+    }
+
   def moveDown(id: Id): Unit = ???
 }

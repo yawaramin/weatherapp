@@ -29,7 +29,7 @@ object BackendService {
         Forecast.remove(stmt)(id) flatMap (_ => NoContent())
 
       case POST -> Root / "move" / "up" / IntVar(id) =>
-        Forecast moveUp id; NoContent()
+        Forecast.moveUp(stmt)(id) flatMap (_ => NoContent())
 
       case POST -> Root / "move" / "down" / IntVar(id) =>
         Forecast moveDown id; NoContent()
