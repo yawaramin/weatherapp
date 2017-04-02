@@ -24,7 +24,12 @@ object BackendService {
         Ok(Forecast getData stmt map (_.asJson))
 
       case POST -> Root / "add" / LongVar(id) =>
-        Created(Forecast.add(stmt)(id) map (_.asJson))
+        Forecast
+          .add(stmt)(id)
+          .flatMap(forecast => Ok(forecast.asJson))
+          .handleWith {
+            case _: JdbcSQLException => Conflict(id.asJson)
+          }
 
       case POST -> Root / "remove" / IntVar(id) =>
         Forecast.remove(stmt)(id) flatMap (_ => Ok())

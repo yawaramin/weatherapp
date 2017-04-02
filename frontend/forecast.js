@@ -1,12 +1,13 @@
 const Forecast = {
   view: (model, actions) =>
-    h("div.card", {},
-      h("header.card-header", {},
-        h("p.card-header-title", {}, Cities[model.id])),
+    h("div", { "class": "card" },
+      h("header", { "class": "card-header" },
+        h("p", { "class": "card-header-title" }, Cities[model.id])),
 
-      h("div.card-content", {},
-        h("div.content", {}, model.days.map(day => day.dt))),
+      h("div", { "class": "card-content" },
+        h("div", { "class": "content" },
+        model.days.map(day => day.dt))),
 
-      h("footer.card-footer", {},
-        h("a.card-footer-item", {}, "Save")))
+      h("footer", { "class": "card-footer" },
+        h("a", { "class": "card-footer-item" }, "Remove")))
 }
