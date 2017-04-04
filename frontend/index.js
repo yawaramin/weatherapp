@@ -36,8 +36,7 @@ function view(model, actions) {
 
           "Get Weather Data"))),
 
-    h("div", {},
-      model.forecasts.map(f => Forecast.view(f, Forecast.actions))));
+    h("div", {}, model.forecasts.map(f => Forecast.view(f, actions))));
 }
 
 const actions = {
@@ -61,6 +60,21 @@ const actions = {
       resp.ok ?
         resp.json().then(forecast => actions.add_forecast(forecast)) :
         actions.set_error(err),
+
+      _ => actions.set_error(err));
+  },
+
+  remove_city: (model, city_id) =>
+    ({ forecasts: model.forecasts.filter(forecast =>
+      forecast.id !== city_id) }),
+
+  remove: (_, city_id, actions) => {
+    const err = "Could not remove city";
+
+    return fetch(
+      `${url_base}/remove/${city_id}`,
+      { method: "POST" }).then(resp =>
+      resp.ok ? actions.remove_city(city_id) : actions.set_error(err),
 
       _ => actions.set_error(err));
   }
