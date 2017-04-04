@@ -34,7 +34,7 @@ function view(model, actions) {
             "class":
               `button is-primary${model.is_loading ? " is-loading" : ""}` },
 
-          "Refresh"))),
+          "Get Weather Data"))),
 
     h("div", {},
       model.forecasts.map(f => Forecast.view(f, Forecast.actions))));
@@ -43,6 +43,8 @@ function view(model, actions) {
 const actions = {
   select_city: (_, city_id) => ({ selected_city: city_id, err: null }),
   set_error: (_, err) => ({ err }),
+  set_loading: (_, is_loading) => ({ is_loading }),
+  set_forecasts: (_, forecasts) => ({ err: null, forecasts }),
   add_forecast: (model, forecast) =>
     forecast ?
       { err: null,
@@ -54,17 +56,29 @@ const actions = {
     const err = "Could not add city";
 
     return fetch(
-      `${url_base}/add/${model.selected_city}`, { method: "POST" })
-      .then(
-        resp =>
-          resp.ok ?
-            resp
-              .json().then(forecast => actions.add_forecast(forecast)) :
+      `${url_base}/add/${model.selected_city}`,
+      { method: "POST" }).then(resp =>
+      resp.ok ?
+        resp.json().then(forecast => actions.add_forecast(forecast)) :
+        actions.set_error(err),
 
-            actions.set_error(err),
-
-        _ => actions.set_error(err));
+      _ => actions.set_error(err));
   }
 };
 
-app({ model, view, actions });
+const subscriptions = [
+  (model, actions) => {
+    const err = "Could not get forecast data";
+    actions.set_loading(true);
+
+    return fetch(`${url_base}/forecast_data`).then(resp =>
+    resp.ok ?
+      resp.json().then(forecasts => actions.set_forecasts(forecasts)) :
+      actions.set_error(err),
+
+    _ => actions.set_error(err)).then(_ =>
+    actions.set_loading(false));
+  }
+];
+
+app({ model, view, actions, subscriptions });
