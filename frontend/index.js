@@ -30,7 +30,7 @@ function view(model, actions) {
       h("p", { "class": "control" },
         h("a",
           { disabled: model.is_loading,
-            onclick: _ => actions.refresh,
+            onclick: _ => actions.refresh(null),
             "class":
               `button is-primary${model.is_loading ? " is-loading" : ""}` },
 
@@ -65,7 +65,7 @@ const actions = {
   },
 
   remove_city: (model, city_id) =>
-    ({ forecasts: model.forecasts.filter(forecast =>
+    ({ err: null, forecasts: model.forecasts.filter(forecast =>
       forecast.id !== city_id) }),
 
   remove: (_, city_id, actions) => {
@@ -77,6 +77,17 @@ const actions = {
       resp.ok ? actions.remove_city(city_id) : actions.set_error(err),
 
       _ => actions.set_error(err));
+  },
+
+  refresh: (_, __, actions) => {
+    const err = "Could not get weather data";
+
+    return fetch(`${url_base}/forecasts`).then(resp =>
+    resp.ok ?
+      resp.json().then(forecasts => actions.set_forecasts(forecasts)) :
+      actions.set_error(err),
+
+    _ => actions.set_error(err));
   }
 };
 
