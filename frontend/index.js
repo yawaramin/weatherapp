@@ -36,7 +36,8 @@ function view(model, actions) {
 
           "Refresh"))),
 
-    h("div", {}, model.forecasts.map(f => Forecast.view(f, actions))));
+    h("div", {},
+      model.forecasts.map(f => Forecast.view(f, Forecast.actions))));
 }
 
 const actions = {
