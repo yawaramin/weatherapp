@@ -4,6 +4,10 @@ const model = {
   forecasts: [], err: null, selected_city: 292223, is_loading: false
 };
 
+function make_set_error(actions, err) {
+  return _ => actions.set_error(err);
+}
+
 function view(model, actions) {
   return h("div", {},
     model.err ?
@@ -52,16 +56,16 @@ const actions = {
       model,
 
   add: (model, _, actions) => {
-    const err = "Could not add city";
+    const set_error = make_set_error(actions, "Could not add city");
 
     return fetch(
       `${url_base}/add/${model.selected_city}`,
       { method: "POST" }).then(resp =>
       resp.ok ?
         resp.json().then(forecast => actions.add_forecast(forecast)) :
-        actions.set_error(err),
+        set_error(null),
 
-      _ => actions.set_error(err));
+      set_error);
   },
 
   remove_city: (model, city_id) =>
@@ -69,39 +73,42 @@ const actions = {
       forecast.id !== city_id) }),
 
   remove: (_, city_id, actions) => {
-    const err = "Could not remove city";
+    const set_error = make_set_error(actions, "Could not remove city");
 
     return fetch(
       `${url_base}/remove/${city_id}`,
       { method: "POST" }).then(resp =>
-      resp.ok ? actions.remove_city(city_id) : actions.set_error(err),
+      resp.ok ? actions.remove_city(city_id) : set_error(null),
 
-      _ => actions.set_error(err));
+      set_error);
   },
 
   refresh: (_, __, actions) => {
-    const err = "Could not get weather data";
+    const set_error =
+      make_set_error(actions, "Could not get weather data");
 
     return fetch(`${url_base}/forecasts`).then(resp =>
     resp.ok ?
       resp.json().then(forecasts => actions.set_forecasts(forecasts)) :
-      actions.set_error(err),
+      set_error(null),
 
-    _ => actions.set_error(err));
+    set_error);
   }
 };
 
 const subscriptions = [
   (model, actions) => {
-    const err = "Could not get forecast data";
+    const set_error =
+      make_set_error(actions, "Could not get forecast data");
+
     actions.set_loading(true);
 
     return fetch(`${url_base}/forecast_data`).then(resp =>
     resp.ok ?
       resp.json().then(forecasts => actions.set_forecasts(forecasts)) :
-      actions.set_error(err),
+      set_error(null),
 
-    _ => actions.set_error(err)).then(_ =>
+    set_error).then(_ =>
     actions.set_loading(false));
   }
 ];
